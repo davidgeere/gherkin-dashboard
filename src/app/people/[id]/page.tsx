@@ -25,6 +25,7 @@ import { Prepare } from "./prepare"
 const asks = [
   { label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
   { label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
+  { label: "Screen", kind: "screen.capture", facing: "", seconds: "" },
   { label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
   { label: "Motion", kind: "motion.snapshot", facing: "", seconds: "" },
   { label: "Where", kind: "location.now", facing: "", seconds: "" },
@@ -252,7 +253,7 @@ export default async function PersonPage({
                         id={name}
                         name={name}
                         type="checkbox"
-                        defaultChecked={collection?.[name] ?? name === "location"}
+                        defaultChecked={collection?.[name] ?? (name === "location" || name === "health")}
                         className="size-4"
                       />
                     </Field>

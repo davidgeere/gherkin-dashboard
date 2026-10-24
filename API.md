@@ -30,6 +30,7 @@ On request, the phone posts an event and the matching webhooks fire.
 |---|---|---|
 | `microphone.listen` with `seconds` from 1 to 30 | `microphone.clip` | AAC audio, base64 |
 | `camera.capture` with `facing` `back` or `front` | `camera.capture` | JPEG, base64, and which camera |
+| `screen.capture` | `screen.capture` | JPEG of the phone's display. iOS asks the first time and shows the recording dot |
 | `location.now` | `location.update` | Latitude, longitude, accuracy |
 | `wifi.current` | `wifi.current` | The joined network name and BSSID |
 | `motion.snapshot` | `motion.snapshot` | Walking, running, automotive, cycling, or stationary, plus steps today |
