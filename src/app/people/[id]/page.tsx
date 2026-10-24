@@ -18,23 +18,24 @@ import {
   type Person,
   type Rules,
 } from "@/lib/gherkin"
+import { Capture } from "./capture"
 import { IssuedKey } from "./issued-key"
+import { Prepare } from "./prepare"
 
-const commands = [
-  "ping",
-  "location.now",
-  "notify",
-  "microphone.listen",
-  "camera.capture",
-  "motion.snapshot",
-  "health.snapshot",
-  "wifi.current",
-  "wifi.nearby",
-  "bluetooth.state",
-  "battery.now",
-  "permissions.status",
-  "screen.sites",
-  "screen.apps",
+const asks = [
+  { label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
+  { label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
+  { label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
+  { label: "Motion", kind: "motion.snapshot", facing: "", seconds: "" },
+  { label: "Where", kind: "location.now", facing: "", seconds: "" },
+  { label: "Wi-Fi", kind: "wifi.current", facing: "", seconds: "" },
+  { label: "Nearby Wi-Fi", kind: "wifi.nearby", facing: "", seconds: "" },
+  { label: "Health", kind: "health.snapshot", facing: "", seconds: "" },
+  { label: "Bluetooth", kind: "bluetooth.state", facing: "", seconds: "" },
+  { label: "Battery", kind: "battery.now", facing: "", seconds: "" },
+  { label: "Access", kind: "permissions.status", facing: "", seconds: "" },
+  { label: "Sites", kind: "screen.sites", facing: "", seconds: "" },
+  { label: "Apps", kind: "screen.apps", facing: "", seconds: "" },
 ]
 
 const collectors = [
@@ -94,7 +95,7 @@ export default async function PersonPage({
   if (operating) {
     const [deviceResponse, eventResponse, collectionResponse] = await Promise.all([
       gherkin("/v1/devices", operating),
-      gherkin("/v1/events?limit=20", operating),
+      gherkin("/v1/events?limit=100", operating),
       gherkin("/v1/collection", operating),
     ])
     if (deviceResponse.ok) devices = (await deviceResponse.json()) as Device[]
@@ -118,6 +119,43 @@ export default async function PersonPage({
         <Badge variant="secondary">{person.role}</Badge>
       </div>
       {notice && notices[notice] ? <p className="text-sm text-destructive">{notices[notice]}</p> : null}
+      <Prepare userId={id} ready={Boolean(operating)} />
+
+      {operating ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Ask the phone</CardTitle>
+              <CardDescription>The phone answers on its next check, then the result shows up below.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {asks.map((ask) => (
+                <form key={ask.label} action={sendCommand.bind(null, id)}>
+                  <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                  <input type="hidden" name="kind" value={ask.kind} />
+                  <input type="hidden" name="facing" value={ask.facing} />
+                  <input type="hidden" name="seconds" value={ask.seconds} />
+                  <Button type="submit">{ask.label}</Button>
+                </form>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Captured</CardTitle>
+              <CardDescription>{events.length === 0 ? "Nothing stored yet." : `${events.length} records`}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {events.map((event) => (
+                <Capture key={event.id} event={event} />
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Opening this phone.</p>
+      )}
 
       <Card>
         <CardHeader>
@@ -224,72 +262,8 @@ export default async function PersonPage({
               </form>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Ask the phone</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form action={sendCommand.bind(null, id)} className="flex flex-col gap-4">
-                <Field>
-                  <FieldLabel htmlFor="device_id">Device</FieldLabel>
-                  <select id="device_id" name="device_id" className="h-8 rounded-lg border bg-background px-2 text-sm">
-                    {devices.map((device) => (
-                      <option key={device.id} value={device.id}>{device.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="kind">Command</FieldLabel>
-                  <select id="kind" name="kind" className="h-8 rounded-lg border bg-background px-2 text-sm">
-                    {commands.map((kind) => (
-                      <option key={kind} value={kind}>{kind}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="seconds">Listen seconds</FieldLabel>
-                  <Input id="seconds" name="seconds" placeholder="5" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="facing">Camera</FieldLabel>
-                  <select id="facing" name="facing" className="h-8 rounded-lg border bg-background px-2 text-sm">
-                    <option value="back">Back</option>
-                    <option value="front">Front</option>
-                  </select>
-                </Field>
-                <Button type="submit">Send</Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent events</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Kind</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell>{new Date(event.recorded_at).toLocaleString()}</TableCell>
-                      <TableCell>{event.kind}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
         </>
-      ) : (
-        <p className="text-sm text-muted-foreground">Issue a key to read this phone and send it commands.</p>
-      )}
+      ) : null}
     </main>
   )
 }

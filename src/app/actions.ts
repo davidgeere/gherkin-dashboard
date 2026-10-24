@@ -30,6 +30,40 @@ export async function logout() {
   redirect("/login")
 }
 
+const parents = [
+  "11111111-1111-4111-8111-111111111111",
+  "22222222-2222-4222-8222-222222222222",
+  "44444444-4444-4444-8444-444444444444",
+]
+
+async function ensureKey(userId: string) {
+  const admin = await adminToken()
+  if (!admin) return
+  const existing = await personToken(userId)
+  if (existing) {
+    const check = await gherkin("/v1/me", existing)
+    if (check.ok) return
+  }
+  const response = await gherkin("/v1/admin/tokens", admin, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, name: "manager" }),
+  })
+  if (!response.ok) return
+  const body = (await response.json()) as { token: string }
+  const jar = await cookies()
+  jar.set(keyCookie(userId), body.token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+  })
+}
+
+export async function preparePerson(userId: string) {
+  await ensureKey(userId)
+  if (!parents.includes(userId)) await ensureKey(parents[0])
+}
+
 export async function issueKey(userId: string, formData: FormData) {
   const token = await adminToken()
   if (!token) redirect("/login")
@@ -57,12 +91,6 @@ export async function revokeKey(userId: string, id: string) {
   await gherkin(`/v1/admin/tokens/${id}`, token, { method: "DELETE" })
   redirect(`/people/${userId}`)
 }
-
-const parents = [
-  "11111111-1111-4111-8111-111111111111",
-  "22222222-2222-4222-8222-222222222222",
-  "44444444-4444-4444-8444-444444444444",
-]
 
 export async function saveRules(userId: string, formData: FormData) {
   const token = parents.includes(userId)
