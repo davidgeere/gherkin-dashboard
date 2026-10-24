@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { logout } from "@/app/actions"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { adminToken, gherkin, type Person } from "@/lib/gherkin"
@@ -24,9 +23,8 @@ export default async function HomePage() {
       <div className="grid gap-3">
         {people.map((person) => (
           <Card key={person.id}>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <CardHeader>
               <CardTitle>{person.display_name}</CardTitle>
-              <Badge variant="secondary">{person.role}</Badge>
             </CardHeader>
             <CardContent>
               <Button nativeButton={false} render={<Link href={`/people/${person.id}`} />}>Open</Button>

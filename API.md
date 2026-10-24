@@ -96,8 +96,8 @@ Bearer `ghk_` (phone or agent). The person is taken from the token.
 | POST | `/v1/commands` | `{ "device_id", "kind", "payload" }` |
 | GET | `/v1/commands/pending` | Phone long-poll. `device_id`, `wait` up to 25 seconds |
 | POST | `/v1/commands/{id}/result` | Phone posts the result |
-| GET | `/v1/family/rules` | Own rules, or `user_id` when the token's person is a parent |
-| PUT | `/v1/family/rules` | Parent sets rules for any family `user_id` |
+| GET | `/v1/family/rules` | Rules for this person |
+| PUT | `/v1/family/rules` | Set rules for this person |
 | GET | `/v1/family/activity` | Screen-time activity |
 | POST | `/v1/family/activity` | Phone reports what it applied |
 | GET | `/v1/collection` | Which background collectors are on for this person |

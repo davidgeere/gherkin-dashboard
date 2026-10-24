@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { issueKey, revokeKey, saveCollection, saveRules, sendCommand } from "@/app/actions"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -49,7 +48,6 @@ const collectors = [
 ] as const
 
 const notices: Record<string, string> = {
-  "parent-key": "Issue a key for a parent first. A child's key cannot change screen time.",
   rules: "Could not save screen time.",
   "person-key": "Issue a key for this person first.",
   command: "The phone did not accept that command.",
@@ -76,18 +74,7 @@ export default async function PersonPage({
   const keysResponse = await gherkin(`/v1/admin/tokens?user_id=${id}`, token)
   const keys = (await keysResponse.json()) as AgentKey[]
   const operating = await personToken(id)
-  const parentIds = [
-    "11111111-1111-4111-8111-111111111111",
-    "22222222-2222-4222-8222-222222222222",
-    "44444444-4444-4444-8444-444444444444",
-  ]
-  let rulesToken = parentIds.includes(id) ? operating : undefined
-  if (!rulesToken) {
-    for (const parentId of parentIds) {
-      rulesToken = await personToken(parentId)
-      if (rulesToken) break
-    }
-  }
+  const rulesToken = operating
 
   let devices: Device[] = []
   let events: GherkinEvent[] = []
@@ -117,7 +104,6 @@ export default async function PersonPage({
           </Button>
           <h1 className="text-2xl font-semibold">{person.display_name}</h1>
         </div>
-        <Badge variant="secondary">{person.role}</Badge>
       </div>
       {notice && notices[notice] ? <p className="text-sm text-destructive">{notices[notice]}</p> : null}
       <Prepare userId={id} ready={Boolean(operating)} />
@@ -198,7 +184,7 @@ export default async function PersonPage({
           <Card>
             <CardHeader>
               <CardTitle>Screen time</CardTitle>
-              <CardDescription>A parent key writes this. The phone applies it for this person.</CardDescription>
+              <CardDescription>The phone applies this for this person.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={saveRules.bind(null, id)}>
@@ -229,11 +215,7 @@ export default async function PersonPage({
             </CardContent>
           </Card>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          {parentIds.includes(id)
-            ? "Issue a key for this person to set screen time."
-            : "Issue a key for a parent to set screen time."}
-        </p>
+        <p className="text-sm text-muted-foreground">Opening this phone.</p>
       )}
 
       {operating ? (

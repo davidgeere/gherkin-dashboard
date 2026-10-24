@@ -30,12 +30,6 @@ export async function logout() {
   redirect("/login")
 }
 
-const parents = [
-  "11111111-1111-4111-8111-111111111111",
-  "22222222-2222-4222-8222-222222222222",
-  "44444444-4444-4444-8444-444444444444",
-]
-
 async function ensureKey(userId: string) {
   const admin = await adminToken()
   if (!admin) return
@@ -61,7 +55,6 @@ async function ensureKey(userId: string) {
 
 export async function preparePerson(userId: string) {
   await ensureKey(userId)
-  if (!parents.includes(userId)) await ensureKey(parents[0])
 }
 
 export async function issueKey(userId: string, formData: FormData) {
@@ -93,10 +86,8 @@ export async function revokeKey(userId: string, id: string) {
 }
 
 export async function saveRules(userId: string, formData: FormData) {
-  const token = parents.includes(userId)
-    ? await personToken(userId)
-    : await firstParentToken()
-  if (!token) redirect(`/people/${userId}?notice=parent-key`)
+  const token = await personToken(userId)
+  if (!token) redirect(`/people/${userId}?notice=person-key`)
   const blocked = String(formData.get("blocked") ?? "")
     .split(/[\s,]+/)
     .filter(Boolean)
@@ -116,14 +107,6 @@ export async function saveRules(userId: string, formData: FormData) {
   })
   if (!response.ok) redirect(`/people/${userId}?notice=rules`)
   redirect(`/people/${userId}`)
-}
-
-async function firstParentToken() {
-  for (const id of parents) {
-    const token = await personToken(id)
-    if (token) return token
-  }
-  return undefined
 }
 
 export async function saveCollection(userId: string, formData: FormData) {
