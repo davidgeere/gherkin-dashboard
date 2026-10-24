@@ -1,0 +1,295 @@
+import Link from "next/link"
+import { redirect } from "next/navigation"
+import { issueKey, revokeKey, saveCollection, saveRules, sendCommand } from "@/app/actions"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  adminToken,
+  gherkin,
+  personToken,
+  type AgentKey,
+  type Device,
+  type GherkinEvent,
+  type Collection,
+  type Person,
+  type Rules,
+} from "@/lib/gherkin"
+import { IssuedKey } from "./issued-key"
+
+const commands = [
+  "ping",
+  "location.now",
+  "notify",
+  "microphone.listen",
+  "camera.capture",
+  "motion.snapshot",
+  "health.snapshot",
+  "wifi.current",
+  "wifi.nearby",
+  "bluetooth.state",
+  "battery.now",
+  "permissions.status",
+  "screen.sites",
+  "screen.apps",
+]
+
+const collectors = [
+  ["location", "Location"],
+  ["motion", "Motion"],
+  ["health", "Health"],
+  ["wifi", "Current Wi-Fi"],
+  ["bluetooth", "Bluetooth"],
+  ["battery", "Battery"],
+] as const
+
+const notices: Record<string, string> = {
+  "parent-key": "Issue a key for a parent first. A child's key cannot change screen time.",
+  rules: "Could not save screen time.",
+  "person-key": "Issue a key for this person first.",
+  command: "The phone did not accept that command.",
+  collection: "Could not save background collection.",
+}
+
+export default async function PersonPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ notice?: string }>
+}) {
+  const { id } = await params
+  const { notice } = await searchParams
+  const token = await adminToken()
+  if (!token) redirect("/login")
+  const peopleResponse = await gherkin("/v1/admin/people", token)
+  if (peopleResponse.status === 401) redirect("/login")
+  const people = (await peopleResponse.json()) as Person[]
+  const person = people.find((item) => item.id === id)
+  if (!person) redirect("/")
+
+  const keysResponse = await gherkin(`/v1/admin/tokens?user_id=${id}`, token)
+  const keys = (await keysResponse.json()) as AgentKey[]
+  const operating = await personToken(id)
+  const parentIds = [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222",
+    "44444444-4444-4444-8444-444444444444",
+  ]
+  let rulesToken = parentIds.includes(id) ? operating : undefined
+  if (!rulesToken) {
+    for (const parentId of parentIds) {
+      rulesToken = await personToken(parentId)
+      if (rulesToken) break
+    }
+  }
+
+  let devices: Device[] = []
+  let events: GherkinEvent[] = []
+  let rules: Rules | null = null
+  let collection: Collection | null = null
+  if (operating) {
+    const [deviceResponse, eventResponse, collectionResponse] = await Promise.all([
+      gherkin("/v1/devices", operating),
+      gherkin("/v1/events?limit=20", operating),
+      gherkin("/v1/collection", operating),
+    ])
+    if (deviceResponse.ok) devices = (await deviceResponse.json()) as Device[]
+    if (eventResponse.ok) events = (await eventResponse.json()) as GherkinEvent[]
+    if (collectionResponse.ok) collection = (await collectionResponse.json()) as Collection
+  }
+  if (rulesToken) {
+    const rulesResponse = await gherkin(`/v1/family/rules?user_id=${id}`, rulesToken)
+    if (rulesResponse.ok) rules = (await rulesResponse.json()) as Rules
+  }
+
+  return (
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-10">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <Button variant="link" className="h-auto justify-start px-0" nativeButton={false} render={<Link href="/" />}>
+            People
+          </Button>
+          <h1 className="text-2xl font-semibold">{person.display_name}</h1>
+        </div>
+        <Badge variant="secondary">{person.role}</Badge>
+      </div>
+      {notice && notices[notice] ? <p className="text-sm text-destructive">{notices[notice]}</p> : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Agent keys</CardTitle>
+          <CardDescription>A key is the same credential an agent uses for this person.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <IssuedKey userId={id} />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Kind</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {keys.map((key) => (
+                <TableRow key={key.id}>
+                  <TableCell>{key.name}</TableCell>
+                  <TableCell>{key.kind}</TableCell>
+                  <TableCell>{key.revoked ? "revoked" : "live"}</TableCell>
+                  <TableCell>
+                    {key.revoked ? null : (
+                      <form action={revokeKey.bind(null, id, key.id)}>
+                        <Button variant="outline" type="submit">Revoke</Button>
+                      </form>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {rulesToken ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Screen time</CardTitle>
+              <CardDescription>A parent key writes this. The phone applies it for this person.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={saveRules.bind(null, id)}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="blocked">Blocked sites</FieldLabel>
+                    <Input id="blocked" name="blocked" defaultValue={rules?.blocked_domains.join(" ") ?? ""} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="allowed">Allowed during a lock</FieldLabel>
+                    <Input id="allowed" name="allowed" defaultValue={rules?.allowed_domains.join(" ") ?? ""} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="downtime_start">Downtime start</FieldLabel>
+                    <Input id="downtime_start" name="downtime_start" placeholder="21:00" defaultValue={rules?.downtime_start ?? ""} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="downtime_end">Downtime end</FieldLabel>
+                    <Input id="downtime_end" name="downtime_end" placeholder="07:00" defaultValue={rules?.downtime_end ?? ""} />
+                  </Field>
+                  <Field orientation="horizontal">
+                    <FieldLabel htmlFor="web_locked">Lock browsing now</FieldLabel>
+                    <input id="web_locked" name="web_locked" type="checkbox" defaultChecked={rules?.web_locked ?? false} className="size-4" />
+                  </Field>
+                  <Button type="submit">Save</Button>
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {parentIds.includes(id)
+            ? "Issue a key for this person to set screen time."
+            : "Issue a key for a parent to set screen time."}
+        </p>
+      )}
+
+      {operating ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Background</CardTitle>
+              <CardDescription>While the phone is On, these report on their own. Camera and microphone stay on request.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={saveCollection.bind(null, id)}>
+                <FieldGroup>
+                  {collectors.map(([name, label]) => (
+                    <Field key={name} orientation="horizontal">
+                      <FieldLabel htmlFor={name}>{label}</FieldLabel>
+                      <input
+                        id={name}
+                        name={name}
+                        type="checkbox"
+                        defaultChecked={collection?.[name] ?? name === "location"}
+                        className="size-4"
+                      />
+                    </Field>
+                  ))}
+                  <Button type="submit">Save</Button>
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ask the phone</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form action={sendCommand.bind(null, id)} className="flex flex-col gap-4">
+                <Field>
+                  <FieldLabel htmlFor="device_id">Device</FieldLabel>
+                  <select id="device_id" name="device_id" className="h-8 rounded-lg border bg-background px-2 text-sm">
+                    {devices.map((device) => (
+                      <option key={device.id} value={device.id}>{device.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="kind">Command</FieldLabel>
+                  <select id="kind" name="kind" className="h-8 rounded-lg border bg-background px-2 text-sm">
+                    {commands.map((kind) => (
+                      <option key={kind} value={kind}>{kind}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="seconds">Listen seconds</FieldLabel>
+                  <Input id="seconds" name="seconds" placeholder="5" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="facing">Camera</FieldLabel>
+                  <select id="facing" name="facing" className="h-8 rounded-lg border bg-background px-2 text-sm">
+                    <option value="back">Back</option>
+                    <option value="front">Front</option>
+                  </select>
+                </Field>
+                <Button type="submit">Send</Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent events</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>When</TableHead>
+                    <TableHead>Kind</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell>{new Date(event.recorded_at).toLocaleString()}</TableCell>
+                      <TableCell>{event.kind}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Issue a key to read this phone and send it commands.</p>
+      )}
+    </main>
+  )
+}
