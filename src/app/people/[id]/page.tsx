@@ -148,6 +148,7 @@ export default async function PersonPage({
     if (!latest.has(event.kind)) latest.set(event.kind, event)
   }
   const records = [...latest.values()]
+  const media = events.filter((event) => event.payload?.imageBase64 || event.payload?.audioBase64)
   const openCount = queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length
   const askGroups = [...new Set(asks.map((ask) => ask.group))]
   const setup = (
@@ -304,20 +305,32 @@ export default async function PersonPage({
                   <CardHeader>
                     <CardTitle>{group}</CardTitle>
                   </CardHeader>
-                  <CardContent className="flex flex-wrap gap-3">
-                    {asks.filter((ask) => ask.group === group).map((ask) => {
-                      const reason = unavailable(capabilities, ask.kind)
-                      return (
-                        <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
-                          <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
-                          <input type="hidden" name="kind" value={ask.kind} />
-                          <input type="hidden" name="facing" value={ask.facing} />
-                          <input type="hidden" name="seconds" value={ask.seconds} />
-                          <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
-                          {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
-                        </form>
-                      )
-                    })}
+                  <CardContent className="flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-3">
+                      {asks.filter((ask) => ask.group === group).map((ask) => {
+                        const reason = unavailable(capabilities, ask.kind)
+                        return (
+                          <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
+                            <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                            <input type="hidden" name="kind" value={ask.kind} />
+                            <input type="hidden" name="facing" value={ask.facing} />
+                            <input type="hidden" name="seconds" value={ask.seconds} />
+                            <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
+                            {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
+                          </form>
+                        )
+                      })}
+                    </div>
+                    {group === "Look"
+                      ? media
+                          .filter((event) => event.kind === "camera.capture" || event.kind === "screen.capture")
+                          .map((event) => <Capture key={event.id} event={event} />)
+                      : null}
+                    {group === "Listen"
+                      ? media
+                          .filter((event) => event.kind === "microphone.clip")
+                          .map((event) => <Capture key={event.id} event={event} />)
+                      : null}
                   </CardContent>
                 </Card>
               ))}
@@ -385,7 +398,7 @@ export default async function PersonPage({
             <Card>
               <CardHeader>
                 <CardTitle>Latest of each</CardTitle>
-                <CardDescription>{records.length === 0 ? "Nothing stored yet." : `${events.length} stored, showing the newest of each kind.`}</CardDescription>
+                <CardDescription>{media.length === 0 ? "No pictures or audio stored yet." : `${media.length} pictures and clips. The table is only the newest status of each kind.`}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <Table>
@@ -406,7 +419,7 @@ export default async function PersonPage({
                     ))}
                   </TableBody>
                 </Table>
-                {records.filter((event) => event.payload?.imageBase64 || event.payload?.audioBase64).map((event) => (
+                {media.map((event) => (
                   <Capture key={event.id} event={event} />
                 ))}
               </CardContent>
