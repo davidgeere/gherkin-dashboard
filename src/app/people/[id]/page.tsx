@@ -25,19 +25,14 @@ import { IssuedKey } from "./issued-key"
 import { Prepare } from "./prepare"
 
 const asks = [
-  { group: "Look", label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
-  { group: "Look", label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
   { group: "Listen", label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
   { group: "Place", label: "Where", kind: "location.now", facing: "", seconds: "" },
   { group: "Place", label: "Wi-Fi", kind: "wifi.current", facing: "", seconds: "" },
-  { group: "Place", label: "Nearby Wi-Fi", kind: "wifi.nearby", facing: "", seconds: "" },
   { group: "Body", label: "Motion", kind: "motion.snapshot", facing: "", seconds: "" },
   { group: "Body", label: "Health", kind: "health.snapshot", facing: "", seconds: "" },
   { group: "Device", label: "Bluetooth", kind: "bluetooth.state", facing: "", seconds: "" },
   { group: "Device", label: "Battery", kind: "battery.now", facing: "", seconds: "" },
   { group: "Device", label: "Access", kind: "permissions.status", facing: "", seconds: "" },
-  { group: "Device", label: "Sites", kind: "screen.sites", facing: "", seconds: "" },
-  { group: "Device", label: "Apps", kind: "screen.apps", facing: "", seconds: "" },
 ]
 
 const collectors = [
@@ -50,22 +45,16 @@ const collectors = [
 ] as const
 
 const capabilityFor: Record<string, string> = {
-  "camera.capture": "camera",
-  "screen.capture": "screen",
   "microphone.listen": "microphone",
   "motion.snapshot": "motion",
   "location.now": "location",
   "health.snapshot": "health",
   "bluetooth.state": "bluetooth",
-  "screen.sites": "screen_time",
-  "screen.apps": "screen_time",
 }
 
 const capabilityLabels: Record<string, string> = {
   location: "Location",
   microphone: "Microphone",
-  camera: "Camera",
-  screen: "Screen recording",
   motion: "Motion",
   health: "Health",
   notifications: "Notifications",
@@ -320,11 +309,6 @@ export default async function PersonPage({
                         )
                       })}
                     </div>
-                    {group === "Look"
-                      ? media
-                          .filter((event) => event.kind === "camera.capture" || event.kind === "screen.capture")
-                          .map((event) => <Capture key={event.id} event={event} />)
-                      : null}
                     {group === "Listen"
                       ? media
                           .filter((event) => event.kind === "microphone.clip")
