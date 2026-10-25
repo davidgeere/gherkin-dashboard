@@ -8,6 +8,19 @@ function text(value: unknown) {
   return JSON.stringify(value)
 }
 
+export function summarize(event: GherkinEvent) {
+  const payload = event.payload ?? {}
+  if (text(payload.imageBase64)) return "Photo"
+  if (text(payload.audioBase64)) return "Audio"
+  if (typeof payload.error === "string" && payload.error) return payload.error
+  if (payload.latitude != null && payload.longitude != null) {
+    return `${payload.latitude}, ${payload.longitude}`
+  }
+  const details = Object.entries(payload).filter(([key, value]) => !hidden.has(key) && text(value) !== "")
+  if (details.length === 0) return ""
+  return details.slice(0, 2).map(([key, value]) => `${key} ${text(value)}`).join(" · ")
+}
+
 export function Capture({ event }: { event: GherkinEvent }) {
   const payload = event.payload ?? {}
   const image = text(payload.imageBase64)

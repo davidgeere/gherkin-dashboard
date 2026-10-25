@@ -20,25 +20,25 @@ import {
   type PhoneCommand,
   type Rules,
 } from "@/lib/gherkin"
-import { Capture } from "./capture"
+import { Capture, summarize } from "./capture"
 import { IssuedKey } from "./issued-key"
 import { Prepare } from "./prepare"
 
 const asks = [
-  { label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
-  { label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
-  { label: "Screen", kind: "screen.capture", facing: "", seconds: "" },
-  { label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
-  { label: "Motion", kind: "motion.snapshot", facing: "", seconds: "" },
-  { label: "Where", kind: "location.now", facing: "", seconds: "" },
-  { label: "Wi-Fi", kind: "wifi.current", facing: "", seconds: "" },
-  { label: "Nearby Wi-Fi", kind: "wifi.nearby", facing: "", seconds: "" },
-  { label: "Health", kind: "health.snapshot", facing: "", seconds: "" },
-  { label: "Bluetooth", kind: "bluetooth.state", facing: "", seconds: "" },
-  { label: "Battery", kind: "battery.now", facing: "", seconds: "" },
-  { label: "Access", kind: "permissions.status", facing: "", seconds: "" },
-  { label: "Sites", kind: "screen.sites", facing: "", seconds: "" },
-  { label: "Apps", kind: "screen.apps", facing: "", seconds: "" },
+  { group: "Look", label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
+  { group: "Look", label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
+  { group: "Look", label: "Screen", kind: "screen.capture", facing: "", seconds: "" },
+  { group: "Listen", label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
+  { group: "Place", label: "Where", kind: "location.now", facing: "", seconds: "" },
+  { group: "Place", label: "Wi-Fi", kind: "wifi.current", facing: "", seconds: "" },
+  { group: "Place", label: "Nearby Wi-Fi", kind: "wifi.nearby", facing: "", seconds: "" },
+  { group: "Body", label: "Motion", kind: "motion.snapshot", facing: "", seconds: "" },
+  { group: "Body", label: "Health", kind: "health.snapshot", facing: "", seconds: "" },
+  { group: "Device", label: "Bluetooth", kind: "bluetooth.state", facing: "", seconds: "" },
+  { group: "Device", label: "Battery", kind: "battery.now", facing: "", seconds: "" },
+  { group: "Device", label: "Access", kind: "permissions.status", facing: "", seconds: "" },
+  { group: "Device", label: "Sites", kind: "screen.sites", facing: "", seconds: "" },
+  { group: "Device", label: "Apps", kind: "screen.apps", facing: "", seconds: "" },
 ]
 
 const collectors = [
@@ -96,10 +96,11 @@ export default async function PersonPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ notice?: string }>
+  searchParams: Promise<{ notice?: string; tab?: string }>
 }) {
   const { id } = await params
-  const { notice } = await searchParams
+  const { notice, tab } = await searchParams
+  const section = tab === "phone" || tab === "queue" || tab === "records" || tab === "setup" ? tab : "ask"
   const token = await adminToken()
   if (!token) redirect("/login")
   const peopleResponse = await gherkin("/v1/admin/people", token)
@@ -142,6 +143,120 @@ export default async function PersonPage({
     const item = capabilities?.[key]
     return item?.status === "granted" && item.enabled
   }).length
+  const latest = new Map<string, GherkinEvent>()
+  for (const event of events) {
+    if (!latest.has(event.kind)) latest.set(event.kind, event)
+  }
+  const records = [...latest.values()]
+  const openCount = queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length
+  const askGroups = [...new Set(asks.map((ask) => ask.group))]
+  const setup = (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Agent keys</CardTitle>
+          <CardDescription>A key is the same credential an agent uses for this person.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <IssuedKey userId={id} />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Kind</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {keys.map((key) => (
+                <TableRow key={key.id}>
+                  <TableCell>{key.name}</TableCell>
+                  <TableCell>{key.kind}</TableCell>
+                  <TableCell>{key.revoked ? "revoked" : "live"}</TableCell>
+                  <TableCell>
+                    {key.revoked ? null : (
+                      <form action={revokeKey.bind(null, id, key.id)}>
+                        <Button variant="outline" type="submit">Revoke</Button>
+                      </form>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {rulesToken ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Screen time</CardTitle>
+            <CardDescription>The phone applies this for this person.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={saveRules.bind(null, id)}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="blocked">Blocked sites</FieldLabel>
+                  <Input id="blocked" name="blocked" defaultValue={rules?.blocked_domains.join(" ") ?? ""} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="allowed">Allowed during a lock</FieldLabel>
+                  <Input id="allowed" name="allowed" defaultValue={rules?.allowed_domains.join(" ") ?? ""} />
+                </Field>
+                <div className="flex flex-col gap-4 sm:flex-row">
+                  <Field>
+                    <FieldLabel htmlFor="downtime_start">Downtime start</FieldLabel>
+                    <Input id="downtime_start" name="downtime_start" placeholder="21:00" defaultValue={rules?.downtime_start ?? ""} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="downtime_end">Downtime end</FieldLabel>
+                    <Input id="downtime_end" name="downtime_end" placeholder="07:00" defaultValue={rules?.downtime_end ?? ""} />
+                  </Field>
+                </div>
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor="web_locked">Lock browsing now</FieldLabel>
+                  <input id="web_locked" name="web_locked" type="checkbox" defaultChecked={rules?.web_locked ?? false} className="size-4" />
+                </Field>
+                <Button type="submit">Save</Button>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {operating ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Background</CardTitle>
+            <CardDescription>While the phone is signed in, these report on their own. Camera and microphone stay on request.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={saveCollection.bind(null, id)}>
+              <FieldGroup>
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  {collectors.map(([name, label]) => (
+                    <Field key={name} orientation="horizontal">
+                      <FieldLabel htmlFor={name}>{label}</FieldLabel>
+                      <input
+                        id={name}
+                        name={name}
+                        type="checkbox"
+                        defaultChecked={collection?.[name] ?? (name === "location" || name === "health")}
+                        className="size-4"
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <Button type="submit">Save</Button>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
+    </>
+  )
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -160,8 +275,56 @@ export default async function PersonPage({
       <Prepare userId={id} ready={Boolean(operating)} />
 
       {operating ? (
-        <div className="grid items-start gap-6 lg:grid-cols-2">
-          <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["ask", "Ask"],
+                ["phone", "Phone"],
+                ["queue", openCount > 0 ? `Queue ${openCount}` : "Queue"],
+                ["records", "Records"],
+                ["setup", "Setup"],
+              ] as const
+            ).map(([key, label]) => (
+              <Button
+                key={key}
+                variant={section === key ? "default" : "outline"}
+                nativeButton={false}
+                render={<Link href={key === "ask" ? `/people/${id}` : `/people/${id}?tab=${key}`} />}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          {section === "ask" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {askGroups.map((group) => (
+                <Card key={group}>
+                  <CardHeader>
+                    <CardTitle>{group}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-3">
+                    {asks.filter((ask) => ask.group === group).map((ask) => {
+                      const reason = unavailable(capabilities, ask.kind)
+                      return (
+                        <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
+                          <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                          <input type="hidden" name="kind" value={ask.kind} />
+                          <input type="hidden" name="facing" value={ask.facing} />
+                          <input type="hidden" name="seconds" value={ask.seconds} />
+                          <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
+                          {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
+                        </form>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : null}
+
+          {section === "phone" ? (
             <Card>
               <CardHeader>
                 <CardTitle>On the phone</CardTitle>
@@ -187,35 +350,13 @@ export default async function PersonPage({
                 })}
               </CardContent>
             </Card>
+          ) : null}
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Ask</CardTitle>
-                <CardDescription>The phone queues the request. The result lands in Captured.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-3">
-                {asks.map((ask) => {
-                  const reason = unavailable(capabilities, ask.kind)
-                  return (
-                    <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
-                      <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
-                      <input type="hidden" name="kind" value={ask.kind} />
-                      <input type="hidden" name="facing" value={ask.facing} />
-                      <input type="hidden" name="seconds" value={ask.seconds} />
-                      <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
-                      {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
-                    </form>
-                  )
-                })}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="flex flex-col gap-6">
+          {section === "queue" ? (
             <Card>
               <CardHeader>
                 <CardTitle>Queue</CardTitle>
-                <CardDescription>{queue.length === 0 ? "Nothing waiting." : `${queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length} open`}</CardDescription>
+                <CardDescription>{openCount === 0 ? "Nothing waiting." : `${openCount} open`}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -238,127 +379,45 @@ export default async function PersonPage({
                 </Table>
               </CardContent>
             </Card>
+          ) : null}
 
+          {section === "records" ? (
             <Card>
               <CardHeader>
-                <CardTitle>Captured</CardTitle>
-                <CardDescription>{events.length === 0 ? "Nothing stored yet." : `${events.length} records`}</CardDescription>
+                <CardTitle>Latest of each</CardTitle>
+                <CardDescription>{records.length === 0 ? "Nothing stored yet." : `${events.length} stored, showing the newest of each kind.`}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                {events.map((event) => (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kind</TableHead>
+                      <TableHead>When</TableHead>
+                      <TableHead>Summary</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {records.map((event) => (
+                      <TableRow key={event.id}>
+                        <TableCell>{event.kind}</TableCell>
+                        <TableCell>{new Date(event.recorded_at).toLocaleString()}</TableCell>
+                        <TableCell>{summarize(event)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {records.filter((event) => event.payload?.imageBase64 || event.payload?.audioBase64).map((event) => (
                   <Capture key={event.id} event={event} />
                 ))}
               </CardContent>
             </Card>
-          </div>
+          ) : null}
+
+          {section === "setup" ? <div className="flex flex-col gap-6">{setup}</div> : null}
         </div>
-      ) : null}
-
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent keys</CardTitle>
-            <CardDescription>A key is the same credential an agent uses for this person.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <IssuedKey userId={id} />
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {keys.map((key) => (
-                  <TableRow key={key.id}>
-                    <TableCell>{key.name}</TableCell>
-                    <TableCell>{key.kind}</TableCell>
-                    <TableCell>{key.revoked ? "revoked" : "live"}</TableCell>
-                    <TableCell>
-                      {key.revoked ? null : (
-                        <form action={revokeKey.bind(null, id, key.id)}>
-                          <Button variant="outline" type="submit">Revoke</Button>
-                        </form>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {rulesToken ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Screen time</CardTitle>
-              <CardDescription>The phone applies this for this person.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={saveRules.bind(null, id)}>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="blocked">Blocked sites</FieldLabel>
-                    <Input id="blocked" name="blocked" defaultValue={rules?.blocked_domains.join(" ") ?? ""} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="allowed">Allowed during a lock</FieldLabel>
-                    <Input id="allowed" name="allowed" defaultValue={rules?.allowed_domains.join(" ") ?? ""} />
-                  </Field>
-                  <div className="flex flex-col gap-4 sm:flex-row">
-                    <Field>
-                      <FieldLabel htmlFor="downtime_start">Downtime start</FieldLabel>
-                      <Input id="downtime_start" name="downtime_start" placeholder="21:00" defaultValue={rules?.downtime_start ?? ""} />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="downtime_end">Downtime end</FieldLabel>
-                      <Input id="downtime_end" name="downtime_end" placeholder="07:00" defaultValue={rules?.downtime_end ?? ""} />
-                    </Field>
-                  </div>
-                  <Field orientation="horizontal">
-                    <FieldLabel htmlFor="web_locked">Lock browsing now</FieldLabel>
-                    <input id="web_locked" name="web_locked" type="checkbox" defaultChecked={rules?.web_locked ?? false} className="size-4" />
-                  </Field>
-                  <Button type="submit">Save</Button>
-                </FieldGroup>
-              </form>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {operating ? (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Background</CardTitle>
-              <CardDescription>While the phone is signed in, these report on their own. Camera and microphone stay on request.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={saveCollection.bind(null, id)}>
-                <FieldGroup>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                    {collectors.map(([name, label]) => (
-                      <Field key={name} orientation="horizontal">
-                        <FieldLabel htmlFor={name}>{label}</FieldLabel>
-                        <input
-                          id={name}
-                          name={name}
-                          type="checkbox"
-                          defaultChecked={collection?.[name] ?? (name === "location" || name === "health")}
-                          className="size-4"
-                        />
-                      </Field>
-                    ))}
-                  </div>
-                  <Button type="submit">Save</Button>
-                </FieldGroup>
-              </form>
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
+      ) : (
+        <div className="flex flex-col gap-6">{setup}</div>
+      )}
     </main>
   )
 }
