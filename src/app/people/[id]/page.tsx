@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { issueKey, revokeKey, saveCollection, saveRules, sendCommand } from "@/app/actions"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -137,148 +138,160 @@ export default async function PersonPage({
     if (rulesResponse.ok) rules = (await rulesResponse.json()) as Rules
   }
 
+  const readyCount = Object.keys(capabilityLabels).filter((key) => {
+    const item = capabilities?.[key]
+    return item?.status === "granted" && item.enabled
+  }).length
+
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-10">
-      <div className="flex items-center justify-between gap-4">
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
+      <div className="flex items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <Button variant="link" className="h-auto justify-start px-0" nativeButton={false} render={<Link href="/" />}>
+          <Button variant="ghost" className="w-fit px-2" nativeButton={false} render={<Link href="/" />}>
             People
           </Button>
-          <h1 className="text-2xl font-semibold">{person.display_name}</h1>
+          <h1 className="text-2xl font-medium">{person.display_name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {operating ? `${readyCount} of ${Object.keys(capabilityLabels).length} controls ready` : "Opening this phone."}
+          </p>
         </div>
       </div>
       {notice ? <p className="text-sm text-destructive">{notices[notice] ?? decodeURIComponent(notice)}</p> : null}
       <Prepare userId={id} ready={Boolean(operating)} />
 
       {operating ? (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>On the phone</CardTitle>
-              <CardDescription>A control stays off until that person requests it and leaves the switch on.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {Object.entries(capabilityLabels).map(([key, label]) => {
-                const item = capabilities?.[key]
-                const state = !item || item.status === "not_asked"
-                  ? "Not requested"
-                  : item.status === "denied"
-                    ? "Denied"
-                    : item.enabled
-                      ? "Ready"
-                      : "Turned off"
-                return (
-                  <div key={key} className="flex items-center justify-between gap-4 text-sm">
-                    <span>{label}</span>
-                    <span className="text-muted-foreground">{state}</span>
-                  </div>
-                )
-              })}
-            </CardContent>
-          </Card>
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>On the phone</CardTitle>
+                <CardDescription>A control stays off until that person requests it and leaves the switch on.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {Object.entries(capabilityLabels).map(([key, label]) => {
+                  const item = capabilities?.[key]
+                  const state = !item || item.status === "not_asked"
+                    ? "Not requested"
+                    : item.status === "denied"
+                      ? "Denied"
+                      : item.enabled
+                        ? "Ready"
+                        : "Turned off"
+                  const variant = state === "Ready" ? "default" : state === "Denied" ? "destructive" : state === "Turned off" ? "outline" : "secondary"
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-4 rounded-xl bg-secondary px-3 py-2 text-sm">
+                      <span>{label}</span>
+                      <Badge variant={variant}>{state}</Badge>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Ask the phone</CardTitle>
-              <CardDescription>The phone queues the request, then the result shows up below.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              {asks.map((ask) => {
-                const reason = unavailable(capabilities, ask.kind)
-                return (
-                  <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
-                    <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
-                    <input type="hidden" name="kind" value={ask.kind} />
-                    <input type="hidden" name="facing" value={ask.facing} />
-                    <input type="hidden" name="seconds" value={ask.seconds} />
-                    <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
-                    {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
-                  </form>
-                )
-              })}
-            </CardContent>
-          </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Ask</CardTitle>
+                <CardDescription>The phone queues the request. The result lands in Captured.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                {asks.map((ask) => {
+                  const reason = unavailable(capabilities, ask.kind)
+                  return (
+                    <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
+                      <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                      <input type="hidden" name="kind" value={ask.kind} />
+                      <input type="hidden" name="facing" value={ask.facing} />
+                      <input type="hidden" name="seconds" value={ask.seconds} />
+                      <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
+                      {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
+                    </form>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Queue</CardTitle>
-              <CardDescription>{queue.length === 0 ? "Nothing waiting." : `${queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length} open`}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Request</TableHead>
-                    <TableHead>State</TableHead>
-                    <TableHead>Detail</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {queue.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.kind}</TableCell>
-                      <TableCell>{item.status}</TableCell>
-                      <TableCell>{typeof item.result?.error === "string" ? item.result.error : ""}</TableCell>
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Queue</CardTitle>
+                <CardDescription>{queue.length === 0 ? "Nothing waiting." : `${queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length} open`}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Request</TableHead>
+                      <TableHead>State</TableHead>
+                      <TableHead>Detail</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {queue.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.kind}</TableCell>
+                        <TableCell>{item.status}</TableCell>
+                        <TableCell>{typeof item.result?.error === "string" ? item.result.error : ""}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Captured</CardTitle>
-              <CardDescription>{events.length === 0 ? "Nothing stored yet." : `${events.length} records`}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {events.map((event) => (
-                <Capture key={event.id} event={event} />
-              ))}
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">Opening this phone.</p>
-      )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Captured</CardTitle>
+                <CardDescription>{events.length === 0 ? "Nothing stored yet." : `${events.length} records`}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {events.map((event) => (
+                  <Capture key={event.id} event={event} />
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Agent keys</CardTitle>
-          <CardDescription>A key is the same credential an agent uses for this person.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <IssuedKey userId={id} />
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {keys.map((key) => (
-                <TableRow key={key.id}>
-                  <TableCell>{key.name}</TableCell>
-                  <TableCell>{key.kind}</TableCell>
-                  <TableCell>{key.revoked ? "revoked" : "live"}</TableCell>
-                  <TableCell>
-                    {key.revoked ? null : (
-                      <form action={revokeKey.bind(null, id, key.id)}>
-                        <Button variant="outline" type="submit">Revoke</Button>
-                      </form>
-                    )}
-                  </TableCell>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent keys</CardTitle>
+            <CardDescription>A key is the same credential an agent uses for this person.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <IssuedKey userId={id} />
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Kind</TableHead>
+                  <TableHead>State</TableHead>
+                  <TableHead />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {keys.map((key) => (
+                  <TableRow key={key.id}>
+                    <TableCell>{key.name}</TableCell>
+                    <TableCell>{key.kind}</TableCell>
+                    <TableCell>{key.revoked ? "revoked" : "live"}</TableCell>
+                    <TableCell>
+                      {key.revoked ? null : (
+                        <form action={revokeKey.bind(null, id, key.id)}>
+                          <Button variant="outline" type="submit">Revoke</Button>
+                        </form>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
-      {rulesToken ? (
+        {rulesToken ? (
           <Card>
             <CardHeader>
               <CardTitle>Screen time</CardTitle>
@@ -295,14 +308,16 @@ export default async function PersonPage({
                     <FieldLabel htmlFor="allowed">Allowed during a lock</FieldLabel>
                     <Input id="allowed" name="allowed" defaultValue={rules?.allowed_domains.join(" ") ?? ""} />
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="downtime_start">Downtime start</FieldLabel>
-                    <Input id="downtime_start" name="downtime_start" placeholder="21:00" defaultValue={rules?.downtime_start ?? ""} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="downtime_end">Downtime end</FieldLabel>
-                    <Input id="downtime_end" name="downtime_end" placeholder="07:00" defaultValue={rules?.downtime_end ?? ""} />
-                  </Field>
+                  <div className="flex flex-col gap-4 sm:flex-row">
+                    <Field>
+                      <FieldLabel htmlFor="downtime_start">Downtime start</FieldLabel>
+                      <Input id="downtime_start" name="downtime_start" placeholder="21:00" defaultValue={rules?.downtime_start ?? ""} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="downtime_end">Downtime end</FieldLabel>
+                      <Input id="downtime_end" name="downtime_end" placeholder="07:00" defaultValue={rules?.downtime_end ?? ""} />
+                    </Field>
+                  </div>
                   <Field orientation="horizontal">
                     <FieldLabel htmlFor="web_locked">Lock browsing now</FieldLabel>
                     <input id="web_locked" name="web_locked" type="checkbox" defaultChecked={rules?.web_locked ?? false} className="size-4" />
@@ -312,39 +327,38 @@ export default async function PersonPage({
               </form>
             </CardContent>
           </Card>
-      ) : (
-        <p className="text-sm text-muted-foreground">Opening this phone.</p>
-      )}
+        ) : null}
 
-      {operating ? (
-        <>
-          <Card>
+        {operating ? (
+          <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Background</CardTitle>
-              <CardDescription>While the phone is On, these report on their own. Camera and microphone stay on request.</CardDescription>
+              <CardDescription>While the phone is signed in, these report on their own. Camera and microphone stay on request.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={saveCollection.bind(null, id)}>
                 <FieldGroup>
-                  {collectors.map(([name, label]) => (
-                    <Field key={name} orientation="horizontal">
-                      <FieldLabel htmlFor={name}>{label}</FieldLabel>
-                      <input
-                        id={name}
-                        name={name}
-                        type="checkbox"
-                        defaultChecked={collection?.[name] ?? (name === "location" || name === "health")}
-                        className="size-4"
-                      />
-                    </Field>
-                  ))}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                    {collectors.map(([name, label]) => (
+                      <Field key={name} orientation="horizontal">
+                        <FieldLabel htmlFor={name}>{label}</FieldLabel>
+                        <input
+                          id={name}
+                          name={name}
+                          type="checkbox"
+                          defaultChecked={collection?.[name] ?? (name === "location" || name === "health")}
+                          className="size-4"
+                        />
+                      </Field>
+                    ))}
+                  </div>
                   <Button type="submit">Save</Button>
                 </FieldGroup>
               </form>
             </CardContent>
           </Card>
-        </>
-      ) : null}
+        ) : null}
+      </div>
     </main>
   )
 }
