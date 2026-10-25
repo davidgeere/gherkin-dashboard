@@ -99,7 +99,11 @@ export default async function PersonPage({
 
   const keysResponse = await gherkin(`/v1/admin/tokens?user_id=${id}`, token)
   const keys = (await keysResponse.json()) as AgentKey[]
-  const operating = await personToken(id)
+  let operating = await personToken(id)
+  if (operating) {
+    const me = await gherkin("/v1/me", operating)
+    if (!me.ok) operating = undefined
+  }
   const rulesToken = operating
 
   let devices: Device[] = []
