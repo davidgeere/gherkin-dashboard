@@ -49,6 +49,15 @@ export type Collection = {
   battery: boolean
 }
 
+export type Capability = { status: "not_asked" | "denied" | "granted" | string; enabled: boolean }
+export type PhoneCommand = {
+  id: string
+  kind: string
+  status: string
+  result: Record<string, unknown>
+  created_at: string
+}
+
 export type Rules = {
   user_id: string
   blocked_domains: string[]

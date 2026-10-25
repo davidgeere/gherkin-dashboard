@@ -13,8 +13,10 @@ import {
   type AgentKey,
   type Device,
   type GherkinEvent,
+  type Capability,
   type Collection,
   type Person,
+  type PhoneCommand,
   type Rules,
 } from "@/lib/gherkin"
 import { Capture } from "./capture"
@@ -46,6 +48,40 @@ const collectors = [
   ["bluetooth", "Bluetooth"],
   ["battery", "Battery"],
 ] as const
+
+const capabilityFor: Record<string, string> = {
+  "camera.capture": "camera",
+  "screen.capture": "screen",
+  "microphone.listen": "microphone",
+  "motion.snapshot": "motion",
+  "location.now": "location",
+  "health.snapshot": "health",
+  "bluetooth.state": "bluetooth",
+  "screen.sites": "screen_time",
+  "screen.apps": "screen_time",
+}
+
+const capabilityLabels: Record<string, string> = {
+  location: "Location",
+  microphone: "Microphone",
+  camera: "Camera",
+  screen: "Screen recording",
+  motion: "Motion",
+  health: "Health",
+  notifications: "Notifications",
+  bluetooth: "Bluetooth",
+  screen_time: "Screen Time",
+}
+
+function unavailable(capabilities: Record<string, Capability> | null, kind: string) {
+  const key = capabilityFor[kind]
+  if (!key) return null
+  const item = capabilities?.[key]
+  if (!item || item.status === "not_asked") return "Not requested on the phone"
+  if (item.status === "denied") return "Denied on the phone"
+  if (!item.enabled) return "Turned off on the phone"
+  return null
+}
 
 const notices: Record<string, string> = {
   rules: "Could not save screen time.",
@@ -80,15 +116,21 @@ export default async function PersonPage({
   let events: GherkinEvent[] = []
   let rules: Rules | null = null
   let collection: Collection | null = null
+  let capabilities: Record<string, Capability> | null = null
+  let queue: PhoneCommand[] = []
   if (operating) {
-    const [deviceResponse, eventResponse, collectionResponse] = await Promise.all([
+    const [deviceResponse, eventResponse, collectionResponse, capabilityResponse, commandResponse] = await Promise.all([
       gherkin("/v1/devices", operating),
       gherkin("/v1/events?limit=100", operating),
       gherkin("/v1/collection", operating),
+      gherkin("/v1/capabilities", operating),
+      gherkin("/v1/commands", operating),
     ])
     if (deviceResponse.ok) devices = (await deviceResponse.json()) as Device[]
     if (eventResponse.ok) events = (await eventResponse.json()) as GherkinEvent[]
     if (collectionResponse.ok) collection = (await collectionResponse.json()) as Collection
+    if (capabilityResponse.ok) capabilities = (await capabilityResponse.json()) as Record<string, Capability>
+    if (commandResponse.ok) queue = (await commandResponse.json()) as PhoneCommand[]
   }
   if (rulesToken) {
     const rulesResponse = await gherkin(`/v1/family/rules?user_id=${id}`, rulesToken)
@@ -105,26 +147,82 @@ export default async function PersonPage({
           <h1 className="text-2xl font-semibold">{person.display_name}</h1>
         </div>
       </div>
-      {notice && notices[notice] ? <p className="text-sm text-destructive">{notices[notice]}</p> : null}
+      {notice ? <p className="text-sm text-destructive">{notices[notice] ?? decodeURIComponent(notice)}</p> : null}
       <Prepare userId={id} ready={Boolean(operating)} />
 
       {operating ? (
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Ask the phone</CardTitle>
-              <CardDescription>The phone answers on its next check, then the result shows up below.</CardDescription>
+              <CardTitle>On the phone</CardTitle>
+              <CardDescription>A control stays off until that person requests it and leaves the switch on.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {asks.map((ask) => (
-                <form key={ask.label} action={sendCommand.bind(null, id)}>
-                  <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
-                  <input type="hidden" name="kind" value={ask.kind} />
-                  <input type="hidden" name="facing" value={ask.facing} />
-                  <input type="hidden" name="seconds" value={ask.seconds} />
-                  <Button type="submit">{ask.label}</Button>
-                </form>
-              ))}
+            <CardContent className="flex flex-col gap-2">
+              {Object.entries(capabilityLabels).map(([key, label]) => {
+                const item = capabilities?.[key]
+                const state = !item || item.status === "not_asked"
+                  ? "Not requested"
+                  : item.status === "denied"
+                    ? "Denied"
+                    : item.enabled
+                      ? "Ready"
+                      : "Turned off"
+                return (
+                  <div key={key} className="flex items-center justify-between gap-4 text-sm">
+                    <span>{label}</span>
+                    <span className="text-muted-foreground">{state}</span>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ask the phone</CardTitle>
+              <CardDescription>The phone queues the request, then the result shows up below.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3">
+              {asks.map((ask) => {
+                const reason = unavailable(capabilities, ask.kind)
+                return (
+                  <form key={ask.label} action={sendCommand.bind(null, id)} className="flex flex-col gap-1">
+                    <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                    <input type="hidden" name="kind" value={ask.kind} />
+                    <input type="hidden" name="facing" value={ask.facing} />
+                    <input type="hidden" name="seconds" value={ask.seconds} />
+                    <Button type="submit" disabled={Boolean(reason)}>{ask.label}</Button>
+                    {reason ? <span className="max-w-40 text-xs text-muted-foreground">{reason}</span> : null}
+                  </form>
+                )
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Queue</CardTitle>
+              <CardDescription>{queue.length === 0 ? "Nothing waiting." : `${queue.filter((item) => item.status === "pending" || item.status === "delivered" || item.status === "running").length} open`}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Request</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead>Detail</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {queue.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.kind}</TableCell>
+                      <TableCell>{item.status}</TableCell>
+                      <TableCell>{typeof item.result?.error === "string" ? item.result.error : ""}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
 

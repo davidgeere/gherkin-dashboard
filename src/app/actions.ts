@@ -142,6 +142,11 @@ export async function sendCommand(userId: string, formData: FormData) {
       },
     }),
   })
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string }
+    const message = body.error ?? "That is not available on the phone"
+    redirect(`/people/${userId}?notice=${encodeURIComponent(message)}`)
+  }
   if (!response.ok) redirect(`/people/${userId}?notice=command`)
   redirect(`/people/${userId}`)
 }
