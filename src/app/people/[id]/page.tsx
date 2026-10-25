@@ -27,7 +27,6 @@ import { Prepare } from "./prepare"
 const asks = [
   { group: "Look", label: "Back photo", kind: "camera.capture", facing: "back", seconds: "" },
   { group: "Look", label: "Front photo", kind: "camera.capture", facing: "front", seconds: "" },
-  { group: "Look", label: "Screen", kind: "screen.capture", facing: "", seconds: "" },
   { group: "Listen", label: "Listen", kind: "microphone.listen", facing: "", seconds: "8" },
   { group: "Place", label: "Where", kind: "location.now", facing: "", seconds: "" },
   { group: "Place", label: "Wi-Fi", kind: "wifi.current", facing: "", seconds: "" },
