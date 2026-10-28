@@ -139,6 +139,8 @@ export async function sendCommand(userId: string, formData: FormData) {
       payload: {
         seconds: String(formData.get("seconds") ?? ""),
         facing: String(formData.get("facing") ?? ""),
+        title: String(formData.get("title") ?? ""),
+        body: String(formData.get("body") ?? ""),
       },
     }),
   })

@@ -50,6 +50,7 @@ const capabilityFor: Record<string, string> = {
   "location.now": "location",
   "health.snapshot": "health",
   "bluetooth.state": "bluetooth",
+  notify: "notifications",
 }
 
 const capabilityLabels: Record<string, string> = {
@@ -185,7 +186,7 @@ export default async function PersonPage({
         <Card>
           <CardHeader>
             <CardTitle>Screen time</CardTitle>
-            <CardDescription>The phone applies this for this person.</CardDescription>
+            <CardDescription>Blocks sites and sets downtime. iOS does not share which apps were used.</CardDescription>
           </CardHeader>
           <CardContent>
             <form action={saveRules.bind(null, id)}>
@@ -291,6 +292,7 @@ export default async function PersonPage({
           </div>
 
           {section === "ask" ? (
+            <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               {askGroups.map((group) => (
                 <Card key={group}>
@@ -321,6 +323,28 @@ export default async function PersonPage({
                   </CardContent>
                 </Card>
               ))}
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Message</CardTitle>
+                <CardDescription>Shows on that phone as a notification.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={sendCommand.bind(null, id)} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <input type="hidden" name="device_id" value={devices[0]?.id ?? ""} />
+                  <input type="hidden" name="kind" value="notify" />
+                  <input type="hidden" name="title" value="Gherkin" />
+                  <Field className="flex-1">
+                    <FieldLabel htmlFor="message">Message</FieldLabel>
+                    <Input id="message" name="body" placeholder="Come downstairs" />
+                  </Field>
+                  <Button type="submit" disabled={Boolean(unavailable(capabilities, "notify"))}>Send</Button>
+                </form>
+                {unavailable(capabilities, "notify") ? (
+                  <p className="mt-2 text-xs text-muted-foreground">{unavailable(capabilities, "notify")}</p>
+                ) : null}
+              </CardContent>
+            </Card>
             </div>
           ) : null}
 
